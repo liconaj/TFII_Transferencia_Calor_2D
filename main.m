@@ -4,27 +4,42 @@ clear
 
 addpath heattransf2d
 
-T_env = 20;
+
 k_m = 50;
 k_g = 0.1;
-q = 195e3;
-h_env = 10;
+q_g = 195e3;
+T_env = 20;
+h_env = 500;
 cellsize = 4e-2;
 celldivisions = 10;
+
 modelo = "modelos/sketch1.png";
 NodeMesh = nodemesh(modelo, cellsize, celldivisions);
-heatsystem = heattransf2d(NodeMesh, T_env, [k_m k_g], h_env, q);
+
+nodeparams = dictionary();
+nodeparams = heattransf2d.setupnk(nodeparams, 0x6, k_m);         % Metal
+nodeparams = heattransf2d.setupnk(nodeparams, 0x9, k_g, q_g);    % Camara combustión
+nodeparams = heattransf2d.setupnh(nodeparams, 0x1, h_env, T_env);% Ambiente
+nodeparams = heattransf2d.setupni(nodeparams, 0x0);              % Aislante
+
+heatsystem = heattransf2d(NodeMesh,nodeparams);
+heatsystem = heatsystem.solvesystem();
 heatsystem.showimtemps()
 
-%{
-T = [1700 400];    % K
-h = [1000 200];    % W/m2K
-k = 25;            % W/mK
-cellsize = 1e-3;   %m
-celldivisions = 10;
 
+%{
+cellsize = 1e-3;
+celldivisions = 20;
 modelo = "modelos/bookex.png";
 NodeMesh = nodemesh(modelo, cellsize, celldivisions);
-heatsystem = heattransf2d(NodeMesh, T, k, h);
+
+nodeparams = dictionary();
+nodeparams = heattransf2d.setupnk(nodeparams, 0x6, 25);
+nodeparams = heattransf2d.setupnh(nodeparams, 0x1, 1000, 1700);
+nodeparams = heattransf2d.setupnh(nodeparams, 0xD, 200, 400);
+nodeparams = heattransf2d.setupni(nodeparams, 0x0); 
+
+heatsystem = heattransf2d(NodeMesh, nodeparams);
+heatsystem = heatsystem.solvesystem();
 heatsystem.showimtemps()
 %}

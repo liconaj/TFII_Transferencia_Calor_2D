@@ -1,79 +1,57 @@
 classdef heattransf2d
     properties
-        TempMesh    % Matriz temperaturas con forma pieza
-        k1          % conductividad térmica metal
-        k2          % conductividad térmica cámara combustión
-        q2          % generacion calor cámara combustión
-        h1          % convección térmica ambiente (aire)
-        h2          % convección térimca refrigeramiento        
-        T1          % temperatura ambiente
-        T2          % temperatura refrigeramiento
-        SystemMatrix     % Matriz A de AT=b
-        SystemVector     % Vector b de AT=b
-        SystemTemps      % Vector T de AT=b, resultante de A\b
+        TempMesh     % Matriz temperaturas con forma pieza
+        SystemMatrix % Matriz A de AT=b
+        SystemVector % Vector b de AT=b
+        SystemTemps  % Vector T de AT=b, resultante de A\b
+        NodeParams
+        MeshIndex
     end
     properties (GetAccess = private)        
         NodeMesh
         dx
         yp, yn
         xp, xn
+        numeqs
     end
     methods
-        function obj = heattransf2d(NodeMesh, T, k, h, q)
+        function obj = heattransf2d(NodeMesh, nodeparams)
+            arguments
+                NodeMesh nodemesh
+                nodeparams dictionary
+            end
             obj.NodeMesh = NodeMesh;
-            if size(T,2) == 2
-                obj.T1 = T(1);
-                obj.T2 = T(2);
-            else
-                obj.T1 = T;
-            end
-            if size(k,2) == 2
-                obj.k1 = k(1);
-                obj.k2 = k(2);
-            else
-                obj.k1 = k;
-            end
-            if size(h,2) == 2
-                obj.h1 = h(1);
-                obj.h2 = h(2);
-            else
-                obj.h1 = h;
-            end
-            if nargin == 5
-                obj.q2 = q;
-            end
+            obj.NodeParams = nodeparams;
             obj.dx = obj.NodeMesh.dx;
-            obj = solvesystem(obj);
-            obj = calcmainnodespos(obj);
-        end        
+            obj = calcmeshindex(obj);            
+        end
         function showimtemps(obj)
+            obj = calcmainnodespos(obj);
             tempmesh = obj.TempMesh(obj.yp:obj.yn,obj.xp:obj.xn);            
             imagesc(tempmesh)
             colorbar
             daspect([1 1 1])            
-            %colormap("jet")
+            colormap("hot")
         end
         function obj = solvesystem(obj)
-            obj.SystemMatrix = zeros(obj.NodeMesh.numData);
-            obj.SystemVector = zeros(obj.NodeMesh.numData, 1);
+            obj.SystemMatrix = zeros(obj.numeqs);
+            obj.SystemVector = zeros(obj.numeqs, 1);
             ySystem = 0;
             for y = 1:obj.NodeMesh.rows
                 for x = 1:obj.NodeMesh.cols
-                    nodetype = obj.NodeMesh.Data(y, x);
-                    % ignorar nodo si no es metal o cámara
-                    % combustion
-                    if obj.NodeMesh.DataIndex(y,x) == 0
+                    nodename = obj.NodeMesh.Data{y, x};
+                    if obj.MeshIndex(y,x) == 0
                         continue
                     end
                     ySystem = ySystem + 1;
                     nodescase = obj.NodeMesh.Data(y-1:y+1,x-1:x+1);
-                    [coefMatrix, coefVector] = getcoefs(obj, nodetype, nodescase);
+                    [coefMatrix, coefVector] = getcoefs(obj, nodename, nodescase);
                     xSystem = zeros(1, 5);
-                    xSystem(1) = obj.NodeMesh.DataIndex(y, x);
-                    xSystem(2) = obj.NodeMesh.DataIndex(y, x-1);
-                    xSystem(3) = obj.NodeMesh.DataIndex(y-1, x);
-                    xSystem(4) = obj.NodeMesh.DataIndex(y, x+1);
-                    xSystem(5) = obj.NodeMesh.DataIndex(y+1, x);
+                    xSystem(1) = obj.MeshIndex(y, x);
+                    xSystem(2) = obj.MeshIndex(y, x-1);
+                    xSystem(3) = obj.MeshIndex(y-1, x);
+                    xSystem(4) = obj.MeshIndex(y, x+1);
+                    xSystem(5) = obj.MeshIndex(y+1, x);
                     for i = 1:5
                         if xSystem(i) == 0
                             continue
@@ -85,221 +63,127 @@ classdef heattransf2d
             end
             obj.SystemTemps = obj.SystemMatrix\obj.SystemVector;            
             obj = createtempmesh(obj);
-        end
+        end        
     end
     methods (Access = private)
-        function [Th, consth, nameh] = convecconsts(obj, nametype)
-            if contains(nametype, "a")
-                Th = obj.T1;
-                consth = 2 * obj.h1 * obj.dx / obj.k1;
-                nameh = "a";
-            elseif contains(nametype, "b") 
-                Th = obj.T2;
-                consth = 2 * obj.h2 * obj.dx / obj.k1;                
-                nameh = "b";
+        function [coefMatrix, coefVector] = getcoefs(obj, nodename, nodescase)
+            ncase = getcase(obj,nodename);
+            switch ncase
+                case 'K1H0Q0I0'  % conducción interna
+                    [constk, ~] = getconstk(obj, nodename);
+                    adjcoefs = [1 1 1 1];
+                    coefMatrix = [-4, adjcoefs];
+                    coefVector = -constk;
+                case 'K2H2Q0I0'  % pared con convección
+                    [consth, nameh, Th] = getconsth(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [0 1 2 1], nameh, "s");
+                    coefMatrix = [-(consth + 4), adjcoefs];
+                    coefVector = -consth * Th;
+                case 'K3H1Q0I0' % esquina interna con convección
+                    [consth, nameh, Th] = getconsth(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [1 1 2 2], nameh, "c");
+                    coefMatrix = [-(consth + 6), adjcoefs];
+                    coefVector = -consth * Th;
+                case 'K1H3Q0I0' % esquina externa con convección
+                    [~, namek] = getconstk(obj, nodename);
+                    [consth, ~, Th] = getconsth(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [1 1 0 0], namek, "c");
+                    coefMatrix = [-(consth + 2), adjcoefs];
+                    coefVector = -consth * Th;
+                case 'K2H0Q0I2' % pared aislada
+                    [constk, ~] = getconstk(obj, nodename);
+                    namei = getnamei(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [0 1 2 1], namei, "s");
+                    coefMatrix = [-4, adjcoefs];                
+                    coefVector = -constk / 2;
+                case 'K1H0Q0I3' % esquina externa aislada
+                    [~, namek] = getconstk(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [1 1 0 0], namek, "c");
+                    coefMatrix = [-2, adjcoefs];
+                    coefVector = 0;
+                case 'K1H1Q0I2' %esquina externa semiaislada
+                    [~, namek] = getconstk(obj, nodename);
+                    [consth, ~, Th] = getconsth(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [2 2 0 0], namek, "c");
+                    coefMatrix = [-(consth + 4), adjcoefs];                
+                    coefVector = -consth * Th;
+                case 'K1H2Q0I1' %esquina externa semiaislada
+                    [~, namek] = getconstk(obj, nodename);
+                    [consth, ~, Th] = getconsth(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [2 2 0 0], namek, "c");
+                    coefMatrix = [-(consth + 4), adjcoefs];                
+                    coefVector = -consth * Th;
             end
         end
-        function [constk, namek] = conducconsts(obj, nametype)
-            condm = contains(nametype, "m");
-            condg = contains(nametype, "g");            
-            if condm && ~condg
-                namek = "m";
-                constk = 0;
-            elseif condg && ~condm
-                namek = "g";
-                constk = obj.q2 * obj.dx^2 / obj.k2;
-            elseif condm && condg
-                namek = "g";
-                constk = 2 * obj.q2 * obj.dx^2 / obj.k2;
+        function ncase = getcase(obj,nodename)
+            k = 0; h = 0; q = 0; i = 0;
+            for n = nodename
+                switch obj.NodeParams(n).type
+                    case 'K'
+                        k = k + 1;
+                    case 'H'
+                        h = h + 1;
+                    case 'Q'
+                        q = q + 1;
+                    case 'I'
+                        i = i + 1;                    
+                end
+            end
+            if k == 4
+                k = 1; % frontera dos nodos k diferentes como uno de los dos
+            end
+            ncase = sprintf('K%dH%dQ%dI%d',k,h,q,i);
+        end
+        function ignore = ignorenode(obj,ntype)
+            utilcount = 0;
+            for n = ntype                
+                if ~ismember(n,keys(obj.NodeParams))
+                    error("Nodo color %d indefinido",hex2dec(n))
+                end
+                if obj.NodeParams(n).type == 'K'
+                    utilcount = utilcount + 1;
+                end          
+            end
+            ignore = utilcount == 0;            
+        end
+        function [consth, nameh, Th] = getconsth(obj, nodename)
+            for n = nodename
+                nparams = obj.NodeParams(n);
+                if nparams.type == 'H'
+                    h = nparams.h;
+                    Th = nparams.T;
+                    nameh = n;
+                elseif nparams.type == 'K'
+                    k = nparams.k;
+                end
+            end
+            consth = 2 * h * obj.dx /  k;
+        end
+        function [constk, namek] = getconstk(obj, nodename)
+            k = 0;
+            for n = nodename
+                nparams = obj.NodeParams(n);
+                if nparams.type == 'K' && nparams.k > k
+                    k = nparams.k;
+                    q = nparams.q;
+                    namek = n;
+                end
+            end
+            constk = q * obj.dx^2 / k;
+        end
+        function namei = getnamei(obj, nodename)
+            for n = nodename
+                if obj.NodeParams(n).type == 'I'
+                    namei = n;
+                    break
+                end
             end
         end
-        function [coefMatrix, coefVector] = getcoefs(obj, nodetype, nodescase)
-            %{
-            b = 2 * obj.q2 * obj.dx / obj.k1;
-            currentcase = obj.NodeMesh.Cases(nodetype);
-            if contains(currentcase, "a")
-                T_convec = obj.T1;
-                a = 2 * obj.h1 * obj.dx / obj.k1;                
-            elseif contains(currentcase, "b") 
-                T_convec = obj.T2;
-                a = 2 * obj.h2 * obj.dx / obj.k1;                
-            end
-            switch currentcase
-                case "m"                    
-                    coefMatrix = [-4 1 1 1 1];
-                    coefVector = 0;                   
-                case "g"
-                    c = obj.q2 * obj.dx^2 / obj.k2;
-                    coefMatrix = [-4 1 1 1 1];
-                    coefVector = -c;                    
-                case "mmee"
-                    %{
-                    adjcoefs = shiftcoefs(obj, nodescase, [0 1 2 1], "e", 1, "side");
-                    coefMatrix = [-(4+a) adjcoefs];
-                    coefVector = -a * T_convec;
-                    %}
-                    adjcoefs = shiftcoefs(obj, nodescase, [0 -1/(a+4) -2/(a+4) -1/(a+4)], "e", 1, "side");
-                    coefMatrix = [1 adjcoefs];
-                    coefVector = a * T_convec / (a + 4);
-                case "m3e1"
-                    %{
-                    adjcoefs = shiftcoefs(obj, nodescase, [1 1 2 2], "e", 1, "corner");
-                    coefMatrix = [-(6+a) adjcoefs];
-                    coefVector = -a * T_convec;
-                    %}
-                    adjcoefs = shiftcoefs(obj, nodescase, [-1/(a+6) -1/(a+6) -2/(a+6) -2/(a+6)], "e", 1, "corner");
-                    coefMatrix = [1 adjcoefs];
-                    coefVector = a * T_convec / (a + 6);
-                case "e3m1"                    
-                    %{
-                    adjcoefs = shiftcoefs(obj, nodescase, [1 1 0 0], "m", 1, "corner");
-                    coefMatrix = [-(2+a) adjcoefs];
-                    coefVector = -a * T_convec;
-                    %}
-                    adjcoefs = shiftcoefs(obj, nodescase, [-1/(a+2) -1/(a+2) 0 0], "e", 1, "corner");
-                    coefMatrix = [1 adjcoefs];
-                    coefVector = a * T_convec / (a + 2);
-                case "mmgg"
-                    %{
-                    adjcoefs = shiftcoefs(obj, nodescase, [2 1 0 1], "m", 1, "side");
-                    coefMatrix = [-4 adjcoefs];
-                    coefVector = -b;
-                    %}
-                    adjcoefs = shiftcoefs(obj, nodescase, [-1/2 -1/4 0 -1/4], "m", 1, "side");
-                    coefMatrix = [1 adjcoefs];
-                    coefVector = b / 4;
-                case "m3g1"                    
-                    %{
-                    adjcoefs = shiftcoefs(obj, nodescase, [1 1 2 2], "g", 1, "corner");
-                    coefMatrix = [-6 adjcoefs];
-                    coefVector = -b;
-                    %}                    
-                    coefMatrix = [1 -1/4 -1/4 -1/4 -1/4];
-                    coefVector = b / 4;
-                case "mmii" 
-                    %{
-                    adjcoefs = shiftcoefs(obj, nodescase, [0 1 2 1], "i", 1, "side");
-                    coefMatrix = [-4 adjcoefs];
-                    coefVector = 0;
-                    %}
-                    coefMatrix = [1 -1/4 -2/4 -1/4 0];
-                    coefVector = 0;
-                case "ggii"
-                    %{
-                    adjcoefs = shiftcoefs(obj, nodescase, [0 2 4 2], "i", 1, "side");
-                    coefMatrix = [-8 adjcoefs];
-                    coefVector = -heatconst;
-                    %}
-                    coefMatrix = [1 -1/4 -2/4 -1/4 0];
-                    coefVector = 0;
-                case "i2mg"
-                    %{
-                    adjcoefs = shiftcoefs(obj, nodescase, [2 2 0 0], "m", 1, "corner");
-                    coefMatrix = [-4 adjcoefs];                    
-                    coefVector = -heatconst;
-                    %}
-                    coefMatrix = [1 -1/4 -2/4 -1/4 0];
-                    coefVector = 0;
-                case "i2me"
-                    %{
-                    adjcoefs = shiftcoefs(obj, nodescase, [2 2 0 0], "m", 1, "corner");
-                    coefMatrix = [-(1+convecconst) adjcoefs];
-                    coefVector = -convecconst * T_convec;
-                    %}
-                    adjcoefs = shiftcoefs(obj, nodescase, [-1/(a/2+2) -1/(a/2+2) 0 0], "m", 1, "corner");
-                    coefMatrix = [1 adjcoefs];
-                    coefVector = (a/2 * T_convec)/ (a/2+2);
-            end
-            %}            
-            nametype = obj.NodeMesh.Cases(nodetype);                        
-            %disp(nametype)
-            if ismember(nametype, ["m", "g"])
-                [constk, ~] = conducconsts(obj, nametype);
-                adjcoefs = [1 1 1 1];
-                coefMatrix = [-4, adjcoefs];
-                coefVector = -constk;                
-            elseif ismember(nametype,"ggmm")
-                [constk, namek] = conducconsts(obj, nametype);
-                adjcoefs = shiftcoefs(obj, nodescase, [1 1 1 1], namek, "s");                
-                coefMatrix = [-4, adjcoefs];
-                coefVector = -constk;
-            elseif ismember(nametype,"gmmm")                
-                adjcoefs = [1 1 1 1];
-                coefMatrix = [-4, adjcoefs];
-                coefVector = 0;
-            elseif ismember(nametype,["aamm", "bbmm"])
-                [Th, consth, nameh] = convecconsts(obj, nametype);
-                adjcoefs = shiftcoefs(obj, nodescase, [0 1 2 1], nameh, "s");
-                coefMatrix = [-(consth + 4), adjcoefs];
-                coefVector = -consth * Th;
-            elseif ismember(nametype,["ammm", "bmmm"])
-                [Th, consth, nameh] = convecconsts(obj, nametype);
-                adjcoefs = shiftcoefs(obj, nodescase, [1 1 2 2], nameh, "c");
-                coefMatrix = [-(consth + 6), adjcoefs];
-                coefVector = -consth * Th;
-            elseif ismember(nametype,["aaam", "bbbm"])
-                [~, namek] = conducconsts(obj, nametype);
-                [Th, consth, ~] = convecconsts(obj, nametype);
-                adjcoefs = shiftcoefs(obj, nodescase, [1 1 0 0], namek, "c");
-                coefMatrix = [-(consth + 2), adjcoefs];
-                coefVector = -consth * Th;
-            elseif ismember(nametype,["ggii","iimm"])
-                [constk, namek] = conducconsts(obj, nametype);
-                adjcoefs = shiftcoefs(obj, nodescase, [2 1 0 1], namek, "s");
-                coefMatrix = [-4, adjcoefs];                
-                coefVector = -constk / 2;
-            elseif ismember(nametype,["aiim","biim","aaim","bbim"])
-                [~, namek] = conducconsts(obj, nametype);
-                [Th, consth, ~] = convecconsts(obj, nametype);
-                adjcoefs = shiftcoefs(obj, nodescase, [2 2 0 0], namek, "c");
-                coefMatrix = [-(consth + 4), adjcoefs];                
-                coefVector = -consth * Th;
-            elseif ismember(nametype,["iiim", "iiig"])
-                [~, namek] = conducconsts(obj, nametype);
-                adjcoefs = shiftcoefs(obj, nodescase, [1 1 0 0], namek, "c");
-                coefMatrix = [-2, adjcoefs];    
-                coefVector = 0;                
-            elseif ismember(nametype, "giim")
-                %[constk, namek] = conducconsts(obj, nametype);
-                adjcoefs = shiftcoefs(obj, nodescase, [0 1 2 1], "i", "s");
-                coefMatrix = [-4, adjcoefs];
-                coefVector = 0;
-            end
-        end
-        function shiftsteps = countshiftsteps(obj, nodescase, nodeseekname, seektype, defnodepos)
-            nodeseek = obj.NodeMesh.Types(nodeseekname);
-            % adjnodes => [1 2 3 4]
-            % "side"  . 2 .   "corner"   1 . 2
-            %         1 . 3              . . .
-            %         . 4 .              4 . 3
-            adjnodes = zeros(1, 4);            
-            y = 2; x = 2; % posicion central en matriz currentcase (3x3)
-            if seektype == "s"
-                adjnodes(1) = nodescase(y, x-1);
-                adjnodes(2) = nodescase(y-1, x);
-                adjnodes(3) = nodescase(y, x+1);
-                adjnodes(4) = nodescase(y+1, x);
-            elseif seektype == "c"
-                adjnodes(1) = nodescase(y-1, x-1);
-                adjnodes(2) = nodescase(y-1, x+1);
-                adjnodes(3) = nodescase(y+1, x+1);
-                adjnodes(4) = nodescase(y+1, x-1);
-            end
-            seekpos = find(adjnodes == nodeseek);
-            shiftsteps = seekpos - defnodepos;
-        end
-        function shiftedcoefs = shiftcoefs(obj, nodescase, defcoefs, nodeseekname, seektype, defnodepos)
-            if nargin == 5                
-                defnodepos = 1;            
-            end
-            shiftsteps = countshiftsteps(obj, nodescase, nodeseekname, seektype, defnodepos);
-            shiftedcoefs = circshift(defcoefs, shiftsteps);
-        end       
         function obj = createtempmesh(obj)
             obj.TempMesh = NaN(size(obj.NodeMesh.Data));
             for y = 1:obj.NodeMesh.rows
                 for x = 1:obj.NodeMesh.cols
-                    systempos = obj.NodeMesh.DataIndex(y,x);
+                    systempos = obj.MeshIndex(y,x);
                     if systempos == 0
                         continue
                     end
@@ -322,6 +206,89 @@ classdef heattransf2d
             while all(isnan(obj.TempMesh(obj.yn,:)))
                 obj.yn = obj.yn - 1;
             end
+        end
+        function obj = calcmeshindex(obj)
+            [m, n] = size(obj.NodeMesh.Data);
+            obj.MeshIndex = zeros(m, n);
+            i = 0;
+            for y = 1:m
+                for x = 1:n
+                    ntype = obj.NodeMesh.Data{y,x};
+                    if ~ignorenode(obj,ntype)
+                        i = i + 1;
+                        obj.MeshIndex(y,x) = i;
+                    end
+                end
+            end
+            obj.numeqs = i;
+        end
+        function shiftedcoefs = shiftcoefs(obj,nodescase, defcoefs, nodeseekname, seektype, defnodepos)
+            if nargin == 5                
+                defnodepos = 1;            
+            end
+            shiftsteps = obj.countshiftsteps(nodescase, nodeseekname, seektype, defnodepos);
+            shiftedcoefs = circshift(defcoefs, shiftsteps);
+        end  
+    end    
+    methods (Static)
+        function shiftsteps = countshiftsteps(nodescase, nodeseek, seektype, defnodepos)
+            % adjnodes => [1 2 3 4]
+            % "side"  . 2 .   "corner"   1 . 2
+            %         1 . 3              . . .
+            %         . 4 .              4 . 3
+            adjnodes = cell(1, 4);            
+            y = 2; x = 2; % posicion central en matriz currentcase (3x3)
+            if seektype == "s"
+                adjnodes{1} = nodescase{y, x-1};
+                adjnodes{2} = nodescase{y-1, x};
+                adjnodes{3} = nodescase{y, x+1};
+                adjnodes{4} = nodescase{y+1, x};
+            elseif seektype == "c"
+                adjnodes{1} = nodescase{y-1, x-1};
+                adjnodes{2} = nodescase{y-1, x+1};
+                adjnodes{3} = nodescase{y+1, x+1};
+                adjnodes{4} = nodescase{y+1, x-1};
+            end
+            seekpos = find(string(adjnodes) == nodeseek);
+            shiftsteps = seekpos - defnodepos;
+        end        
+        function nodesetups = setupnk(nodesetups,id,k,q)
+            arguments
+                nodesetups dictionary
+                id (1,1) char
+                k {mustBeNumeric,mustBePositive}
+                q {mustBeNumeric,mustBeNonnegative} = 0
+            end            
+            ntype = 'K';
+            nodesetups(dec2hex(id)) = struct("type",ntype,"k",k,"q",q);
+        end
+        function nodesetups = setupnh(nodesetups,id,h,T)
+            arguments
+                nodesetups dictionary
+                id (1,1) char
+                h {mustBeNumeric,mustBePositive}
+                T {mustBeNumeric,mustBePositive}
+            end
+            ntype = 'H';
+            nodesetups(dec2hex(id)) = struct("type",ntype,"h",h,"T",T);
+        end
+        function nodesetups = setupnq(nodesetups,id,q,A)
+            arguments
+                nodesetups dictionary
+                id (1,1) char
+                q {mustBeNumeric,mustBePositive}
+                A {mustBeNumeric,mustBePositive}
+            end
+            ntype = 'Q';
+            nodesetups(dec2hex(id)) = struct("type",ntype,"q",q,"A",A);
+        end
+        function nodesetups = setupni(nodesetups,id)
+            arguments
+                nodesetups dictionary
+                id (1,1) char            
+            end
+            ntype = 'I';
+            nodesetups(dec2hex(id)) = struct("type",ntype);
         end
     end
 end
