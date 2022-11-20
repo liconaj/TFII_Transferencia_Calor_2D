@@ -15,19 +15,25 @@ classdef heattransf2d
         numeqs
     end
     methods
-        function obj = heattransf2d(NodeMesh, nodeparams)
+        function obj = heattransf2d(NodeMesh)
             arguments
                 NodeMesh nodemesh
-                nodeparams dictionary
             end
             obj.NodeMesh = NodeMesh;
+            obj.dx = obj.NodeMesh.dx; 
+        end
+        function obj = setnodeparams(obj, nodeparams)
+            arguments
+                obj heattransf2d
+                nodeparams dictionary
+            end
             obj.NodeParams = nodeparams;
-            obj.dx = obj.NodeMesh.dx;
-            obj = calcmeshindex(obj);            
+            obj = calcmeshindex(obj);
         end
         function showimtemps(obj)
+            figure
             obj = calcmainnodespos(obj);
-            tempmesh = obj.TempMesh(obj.yp:obj.yn,obj.xp:obj.xn);            
+            tempmesh = obj.TempMesh(obj.yp:obj.yn,obj.xp:obj.xn);
             imagesc(tempmesh)
             colorbar
             daspect([1 1 1])            
@@ -112,7 +118,7 @@ classdef heattransf2d
                     [consth, ~, Th] = getconsth(obj, nodename);
                     adjcoefs = shiftcoefs(obj, nodescase, [2 2 0 0], namek, "c");
                     coefMatrix = [-(consth + 4), adjcoefs];                
-                    coefVector = -consth * Th;
+                    coefVector = -consth * Th;                
             end
         end
         function ncase = getcase(obj,nodename)
