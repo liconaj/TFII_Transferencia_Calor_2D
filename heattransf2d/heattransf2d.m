@@ -7,7 +7,7 @@ classdef heattransf2d
         NodeParams
         MeshIndex
     end
-    properties (GetAccess = private)        
+    properties (GetAccess = private)
         NodeMesh
         dx
         yp, yn
@@ -20,15 +20,8 @@ classdef heattransf2d
                 NodeMesh nodemesh
             end
             obj.NodeMesh = NodeMesh;
-            obj.dx = obj.NodeMesh.dx; 
-        end
-        function obj = setnodeparams(obj, nodeparams)
-            arguments
-                obj heattransf2d
-                nodeparams dictionary
-            end
-            obj.NodeParams = nodeparams;
-            obj = calcmeshindex(obj);
+            obj.dx = obj.NodeMesh.dx;
+            obj.NodeParams = dictionary();
         end
         function showimtemps(obj)
             figure
@@ -36,10 +29,10 @@ classdef heattransf2d
             tempmesh = obj.TempMesh(obj.yp:obj.yn,obj.xp:obj.xn);
             imagesc(tempmesh)
             colorbar
-            daspect([1 1 1])            
-            colormap("hot")
+            daspect([1 1 1])
         end
         function obj = solvesystem(obj)
+            obj = calcmeshindex(obj);
             obj.SystemMatrix = zeros(obj.numeqs);
             obj.SystemVector = zeros(obj.numeqs, 1);
             ySystem = 0;
@@ -67,9 +60,47 @@ classdef heattransf2d
                     end
                 end
             end
-            obj.SystemTemps = obj.SystemMatrix\obj.SystemVector;            
+            obj.SystemTemps = obj.SystemMatrix\obj.SystemVector;
             obj = createtempmesh(obj);
-        end        
+        end
+        function obj = setupnk(obj,id,k,q)
+            arguments
+                obj heattransf2d
+                id (1,1) char
+                k {mustBeNumeric,mustBePositive}
+                q {mustBeNumeric,mustBeNonnegative} = 0
+            end
+            ntype = 'K';
+            obj.NodeParams(dec2hex(id)) = struct("type",ntype,"k",k,"q",q);
+        end
+        function obj = setupnh(obj,id,h,T)
+            arguments
+                obj heattransf2d
+                id (1,1) char
+                h {mustBeNumeric,mustBePositive}
+                T {mustBeNumeric,mustBePositive}
+            end
+            ntype = 'H';
+            obj.NodeParams(dec2hex(id)) = struct("type",ntype,"h",h,"T",T);
+        end
+        function obj = setupnq(obj,id,q,A)
+            arguments
+                obj heattransf2d
+                id (1,1) char
+                q {mustBeNumeric,mustBePositive}
+                A {mustBeNumeric,mustBePositive}
+            end
+            ntype = 'Q';
+            obj.NodeParams(dec2hex(id)) = struct("type",ntype,"q",q,"A",A);
+        end
+        function obj = setupni(obj,id)
+            arguments
+                obj heattransf2d
+                id (1,1) char
+            end
+            ntype = 'I';
+            obj.NodeParams(dec2hex(id)) = struct("type",ntype);
+        end
     end
     methods (Access = private)
         function [coefMatrix, coefVector] = getcoefs(obj, nodename, nodescase)
@@ -100,7 +131,7 @@ classdef heattransf2d
                     [constk, ~] = getconstk(obj, nodename);
                     namei = getnamei(obj, nodename);
                     adjcoefs = shiftcoefs(obj, nodescase, [0 1 2 1], namei, "s");
-                    coefMatrix = [-4, adjcoefs];                
+                    coefMatrix = [-4, adjcoefs];
                     coefVector = -constk / 2;
                 case 'K1H0Q0I3' % esquina externa aislada
                     [~, namek] = getconstk(obj, nodename);
@@ -111,14 +142,30 @@ classdef heattransf2d
                     [~, namek] = getconstk(obj, nodename);
                     [consth, ~, Th] = getconsth(obj, nodename);
                     adjcoefs = shiftcoefs(obj, nodescase, [2 2 0 0], namek, "c");
-                    coefMatrix = [-(consth + 4), adjcoefs];                
+                    coefMatrix = [-(consth + 4), adjcoefs];
                     coefVector = -consth * Th;
                 case 'K1H2Q0I1' %esquina externa semiaislada
                     [~, namek] = getconstk(obj, nodename);
                     [consth, ~, Th] = getconsth(obj, nodename);
                     adjcoefs = shiftcoefs(obj, nodescase, [2 2 0 0], namek, "c");
-                    coefMatrix = [-(consth + 4), adjcoefs];                
-                    coefVector = -consth * Th;                
+                    coefMatrix = [-(consth + 4), adjcoefs];
+                    coefVector = -consth * Th;
+                case 'K2H0Q2I0' %pared con flujo de calor
+                    [constq, nameq] = getconstq(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [0 1 2 1], nameq, "s");
+                    coefMatrix = [-4, adjcoefs];
+                    coefVector = -constq;
+                case 'K3H0Q1I0' %esquina interna con flujo de calor
+                    [constq, nameq] = getconstq(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [1 1 2 2], nameq, "c");
+                    coefMatrix = [-6, adjcoefs];
+                    coefVector = -constq;
+                case 'K1H0Q1I2' %esquina semiaislada con flujo de calor
+                    [~, namek] = getconstk(obj, nodename);
+                    [constq, ~] = getconstq(obj, nodename);
+                    adjcoefs = shiftcoefs(obj, nodescase, [2 2 0 0], namek, "c");
+                    coefMatrix = [-4, adjcoefs];
+                    coefVector = -constq;
             end
         end
         function ncase = getcase(obj,nodename)
@@ -132,7 +179,7 @@ classdef heattransf2d
                     case 'Q'
                         q = q + 1;
                     case 'I'
-                        i = i + 1;                    
+                        i = i + 1;
                 end
             end
             if k == 4
@@ -142,15 +189,22 @@ classdef heattransf2d
         end
         function ignore = ignorenode(obj,ntype)
             utilcount = 0;
-            for n = ntype                
+            for n = ntype
                 if ~ismember(n,keys(obj.NodeParams))
                     error("Nodo color %d indefinido",hex2dec(n))
                 end
                 if obj.NodeParams(n).type == 'K'
                     utilcount = utilcount + 1;
-                end          
+                end
             end
-            ignore = utilcount == 0;            
+            ignore = utilcount == 0;
+        end
+        function shiftedcoefs = shiftcoefs(obj,nodescase, defcoefs, nodeseekname, seektype, defnodepos)
+            if nargin == 5
+                defnodepos = 1;
+            end
+            shiftsteps = obj.countshiftsteps(nodescase, nodeseekname, seektype, defnodepos);
+            shiftedcoefs = circshift(defcoefs, shiftsteps);
         end
         function [consth, nameh, Th] = getconsth(obj, nodename)
             for n = nodename
@@ -177,6 +231,19 @@ classdef heattransf2d
             end
             constk = q * obj.dx^2 / k;
         end
+        function [constq, nameq] = getconstq(obj, nodename)
+            for n = nodename
+                nparams = obj.NodeParams(n);
+                if nparams.type == 'Q'
+                    q = nparams.q;
+                    A = nparams.A;
+                    nameq = n;
+                elseif nparams.type == 'K'
+                    k = nparams.k;
+                end
+            end
+            constq = 2 * (q/A) * obj.dx / k;
+        end
         function namei = getnamei(obj, nodename)
             for n = nodename
                 if obj.NodeParams(n).type == 'I'
@@ -196,7 +263,7 @@ classdef heattransf2d
                     obj.TempMesh(y, x) = obj.SystemTemps(systempos);
                 end
             end
-        end        
+        end
         function obj = calcmainnodespos(obj)
             obj.yp = 1; obj.yn = obj.NodeMesh.rows;
             obj.xp = 1; obj.xn = obj.NodeMesh.cols;
@@ -228,21 +295,14 @@ classdef heattransf2d
             end
             obj.numeqs = i;
         end
-        function shiftedcoefs = shiftcoefs(obj,nodescase, defcoefs, nodeseekname, seektype, defnodepos)
-            if nargin == 5                
-                defnodepos = 1;            
-            end
-            shiftsteps = obj.countshiftsteps(nodescase, nodeseekname, seektype, defnodepos);
-            shiftedcoefs = circshift(defcoefs, shiftsteps);
-        end  
-    end    
+    end
     methods (Static)
         function shiftsteps = countshiftsteps(nodescase, nodeseek, seektype, defnodepos)
             % adjnodes => [1 2 3 4]
             % "side"  . 2 .   "corner"   1 . 2
             %         1 . 3              . . .
             %         . 4 .              4 . 3
-            adjnodes = cell(1, 4);            
+            adjnodes = cell(1, 4);
             y = 2; x = 2; % posicion central en matriz currentcase (3x3)
             if seektype == "s"
                 adjnodes{1} = nodescase{y, x-1};
@@ -257,44 +317,26 @@ classdef heattransf2d
             end
             seekpos = find(string(adjnodes) == nodeseek);
             shiftsteps = seekpos - defnodepos;
-        end        
-        function nodesetups = setupnk(nodesetups,id,k,q)
-            arguments
-                nodesetups dictionary
-                id (1,1) char
-                k {mustBeNumeric,mustBePositive}
-                q {mustBeNumeric,mustBeNonnegative} = 0
-            end            
-            ntype = 'K';
-            nodesetups(dec2hex(id)) = struct("type",ntype,"k",k,"q",q);
         end
-        function nodesetups = setupnh(nodesetups,id,h,T)
-            arguments
-                nodesetups dictionary
-                id (1,1) char
-                h {mustBeNumeric,mustBePositive}
-                T {mustBeNumeric,mustBePositive}
-            end
-            ntype = 'H';
-            nodesetups(dec2hex(id)) = struct("type",ntype,"h",h,"T",T);
-        end
-        function nodesetups = setupnq(nodesetups,id,q,A)
-            arguments
-                nodesetups dictionary
-                id (1,1) char
-                q {mustBeNumeric,mustBePositive}
-                A {mustBeNumeric,mustBePositive}
-            end
-            ntype = 'Q';
-            nodesetups(dec2hex(id)) = struct("type",ntype,"q",q,"A",A);
-        end
-        function nodesetups = setupni(nodesetups,id)
-            arguments
-                nodesetups dictionary
-                id (1,1) char            
-            end
-            ntype = 'I';
-            nodesetups(dec2hex(id)) = struct("type",ntype);
+        function [heq, eta, efe] = calcfinheq(k,h,L,Y,D)
+            % CALCFINHEQ
+            % Parámetros
+            %   k = coeficiente de conducción de la pieza
+            %   h = coeficiente de convección del entorno
+            %   L = longitud de la aleta
+            %   Y = grosor o altura de la aleta
+            %   D = profundidad o ancho de la aleta
+            % Retorno
+            %   heq = coeficiente de convección equivalente debi a la aleta
+            %   eta = eficiencia de la aleta
+            %   efe = efectividad de la aleta
+            Ak = Y * D; % area de la base
+            P = 2 * (Y + D);
+            nu = sqrt(h * P / (k * Ak));
+            eta = tanh(nu * L) /  (nu * l);
+            Ac = L * P; % area de la aleta
+            efe = eta * Ac / Ak; 
+            heq = 1 + eta * (Ac / Ak);
         end
     end
 end
