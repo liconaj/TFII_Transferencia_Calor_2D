@@ -32,8 +32,8 @@ Y = 0.24; % altura pared
 
 % VALORES VARIABLES
 q = 20e3; % calor que entra a la pieza 
-C_r1 = 0.35; %(L/s) velocidad media refrigerante 1
-C_r2 = 0.3; %(L/s) velocidad media refrigerante 2
+C_r1 = 0.35; %(L/s) caudal refrigerante 1
+C_r2 = 0.3; %(L/s) caudal refrigerante 2
 n_f = 100; %número de aletas en pared
 L_f = 0.09; %m longitud aleta
 % Calculos
@@ -66,7 +66,7 @@ heatsystem = heatsystem.solvesystem(); % resolver el sistema
 heatsystem = heatsystem.setTprop(id_r1,mf_r1,Cp_r);
 
 % RESULTADOS
-Z = 0.5; % plano en eje Z a observar
+Z = 0; % plano en eje Z a observar
 Tprop = heatsystem.getTprop;
 Tmax_all = heatsystem.getTmax(Z);
 Tmax_r1 = heatsystem.getTmaxc(id_r1,Z);
