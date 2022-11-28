@@ -4,7 +4,9 @@ classdef heattransf2d
         SystemMatrix % Matriz A de AT=b
         SystemVector % Vector b de AT=b
         SystemTemps  % Vector T de AT=b, resultante de A\b
-        NodeParams
+        NodeParams   % Diccionario de parametros asociados a un nodo
+        HeatConvec   % Diccionario de calor en paredes convección
+        TmaxConvec   % Diccionario de temperatura máxima en paredes convección
         MeshIndex
     end
     properties (GetAccess = private)
@@ -13,6 +15,7 @@ classdef heattransf2d
         yp, yn
         xp, xn
         numeqs
+        tprop
     end
     methods
         function obj = heattransf2d(NodeMesh)
@@ -22,17 +25,26 @@ classdef heattransf2d
             obj.NodeMesh = NodeMesh;
             obj.dx = obj.NodeMesh.dx;
             obj.NodeParams = dictionary();
+            obj.HeatConvec = dictionary();
+            obj.TmaxConvec = dictionary();
+            obj.tprop = 1;
         end
-        function showimtemps(obj)
+        function showimtemps(obj,Z)
+            arguments
+                obj
+                Z {mustBeNumeric} = 0
+            end
             figure
             obj = calcmainnodespos(obj);
             tempmesh = obj.TempMesh(obj.yp:obj.yn,obj.xp:obj.xn);
-            imagesc(tempmesh)
+            imagesc(obj.tprop * Z + tempmesh)
             colorbar
             daspect([1 1 1])
         end
         function obj = solvesystem(obj)
-            obj = calcmeshindex(obj);
+            if isempty(obj.MeshIndex)
+                obj = calcmeshindex(obj);
+            end
             obj.SystemMatrix = zeros(obj.numeqs);
             obj.SystemVector = zeros(obj.numeqs, 1);
             ySystem = 0;
@@ -62,6 +74,7 @@ classdef heattransf2d
             end
             obj.SystemTemps = obj.SystemMatrix\obj.SystemVector;
             obj = createtempmesh(obj);
+            obj = calcheatconvec(obj);
         end
         function obj = setupnk(obj,id,k,q)
             arguments
@@ -100,6 +113,22 @@ classdef heattransf2d
             end
             ntype = 'I';
             obj.NodeParams(dec2hex(id)) = struct("type",ntype);
+        end
+        function obj = setTprop(obj, hid, mf, Cp)
+            %SETTPROP
+            % hid = codigo color de la refrigeracion
+            % mf = flujo másico
+            % Cp = calor especifico
+            obj = calcheatconvec(obj);
+            obj.tprop = obj.HeatConvec(dec2hex(hid)) / (mf * Cp);
+        end
+        function Tmax = getTmax(obj,hid,Z)
+            arguments
+                obj
+                hid (1,1) char
+                Z {mustBeNumeric} = 0
+            end
+            Tmax = obj.tprop * Z + obj.TmaxConvec(dec2hex(hid));
         end
     end
     methods (Access = private)
@@ -207,10 +236,15 @@ classdef heattransf2d
             shiftedcoefs = circshift(defcoefs, shiftsteps);
         end
         function [consth, nameh, Th] = getconsth(obj, nodename)
+            h = NaN;
             for n = nodename
                 nparams = obj.NodeParams(n);
                 if nparams.type == 'H'
-                    h = nparams.h;
+                    if isnan(h)
+                        h = nparams.h;
+                    elseif nparams.h ~= h
+                        h = h + nparams.h;
+                    end
                     Th = nparams.T;
                     nameh = n;
                 elseif nparams.type == 'K'
@@ -295,6 +329,31 @@ classdef heattransf2d
             end
             obj.numeqs = i;
         end
+        function obj = calcheatconvec(obj)
+            for y = 1:obj.NodeMesh.rows
+                for x = 1:obj.NodeMesh.cols
+                    nodename = obj.NodeMesh.Data{y, x};
+                    if obj.MeshIndex(y,x) == 0
+                        continue
+                    end
+                    ncase = getcase(obj, nodename);
+                    if contains(ncase, ["H1" "H2" "H3"])
+                        [~, nameh, Th] = getconsth(obj, nodename);
+                        h = obj.NodeParams(nameh).h;
+                        T = obj.TempMesh(y, x);
+                        Q = h * obj.dx * (T-Th);
+                        if ~isConfigured(obj.HeatConvec) || ~isKey(obj.HeatConvec,nameh)
+                            obj.HeatConvec(nameh) = 0;
+                            obj.TmaxConvec(nameh) = T;
+                        end
+                        obj.HeatConvec(nameh) = obj.HeatConvec(nameh) + Q;
+                        if T > obj.TmaxConvec(nameh)
+                            obj.TmaxConvec(nameh) = T;
+                        end
+                    end
+                end
+            end
+        end
     end
     methods (Static)
         function shiftsteps = countshiftsteps(nodescase, nodeseek, seektype, defnodepos)
@@ -318,25 +377,65 @@ classdef heattransf2d
             seekpos = find(string(adjnodes) == nodeseek);
             shiftsteps = seekpos - defnodepos;
         end
-        function [heq, eta, efe] = calcfinheq(k,h,L,Y,D)
+        function [heq, eta, efe] = calcfinheq(k,h,Y,Z,L)
             % CALCFINHEQ
             % Parámetros
             %   k = coeficiente de conducción de la pieza
             %   h = coeficiente de convección del entorno
-            %   L = longitud de la aleta
-            %   Y = grosor o altura de la aleta
-            %   D = profundidad o ancho de la aleta
+            %   Y = longitud pared de aletas
+            %   Z = profundidad o ancho de la aleta
+            %   L = longitud de la aleta            
             % Retorno
             %   heq = coeficiente de convección equivalente debi a la aleta
             %   eta = eficiencia de la aleta
-            %   efe = efectividad de la aleta
-            Ak = Y * D; % area de la base
-            P = 2 * (Y + D);
+            %   efe = efectividad de la aleta            
+            Ak = Y * Z; % area de la base
+            P = 2 * (Y + Z);
             nu = sqrt(h * P / (k * Ak));
-            eta = tanh(nu * L) /  (nu * l);
+            eta = tanh(nu * L) /  (nu * L);
             Ac = L * P; % area de la aleta
             efe = eta * Ac / Ak; 
-            heq = 1 + eta * (Ac / Ak);
+            heq = (h/2) * (1+ eta * Ac/Ak);
+        end
+        function h = calchref(kf,Nu,Dh,Re,eD)
+            % CALCREFH
+            % Parámetros
+            %   kf = coeficiente de conducción del fluido
+            %   Nu = número de Nusselt laminar
+            %   Dh = Diametro hidráulico del canal
+            %   Re = Número de Reynolds del fluido
+            f = heattransf2d.calcmoody(Re, eD);
+            if Re > 3500
+                Nu = f * Re / 2;
+            end
+            h = Nu * kf / Dh;
+        end
+        function f = calcmoody(Re,eD)
+            % CALCMOODY
+            % Parámetros
+            %   Re = número de Reynolds
+            %   eD = rugosidad relativa
+            shape = size(Re);
+            Re = Re(:);
+            eD = eD(:);
+            f = zeros(size(Re));
+            for k = 1:numel(Re)
+                if Re(k) > 3500
+                    f(k) = fzero(@(f) 1/sqrt(f)+2*log10(eD(k)/3.7+2.51/(Re(k)*sqrt(f))),[eps,1]);
+                else%if Re(k) < 2500
+                    f(k) = 64/Re(k);
+                %else
+                %    f(k) = NaN;
+                end
+            end
+            f = reshape(f,shape);
+        end
+        function Re = calcRe(u,Dh,v)
+            Re = u * Dh / v;
+        end
+        function Dh = calcDh(a,b)
+            % Diámetro hidráulico de un ducto rectangular
+            Dh = 2*a*b/(a+b);
         end
     end
 end
