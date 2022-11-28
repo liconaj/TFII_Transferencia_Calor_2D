@@ -17,15 +17,15 @@ Cp_r = 4180; % calor especifico del agua J/Kg°C
 k_r = 0.6; %W/m°C conductividad térmica del agua a 20°C
 p_r = 997; %kg/m2 densidad del agua
 % Refigeracion 1 (izq)
-id_r1 = 0xC;
-a_r1 = 0.02; b_r1 = 0.16;
-A_r1 = a_r1 * b_r1;
-Dh_r1 = heattransf2d.calcDh(a_r1,b_r1);
+id_r1 = 0xC; %id color en skecth
+a_r1 = 0.02; b_r1 = 0.16; %base y altura canal
+A_r1 = a_r1 * b_r1; %área canal
+Dh_r1 = heattransf2d.calcDh(a_r1,b_r1); %diametro hidraulico
 % Refrigeracion 2 (sup)
-id_r2 = 0xD;
-a_r2 = 0.12; b_r2 = 0.04;
-A_r2 = a_r2 * b_r2;
-Dh_r2 = heattransf2d.calcDh(a_r2,b_r2);
+id_r2 = 0xD; %id color en sketch
+a_r2 = 0.12; b_r2 = 0.04; % base y altura canal
+A_r2 = a_r2 * b_r2; %área canal
+Dh_r2 = heattransf2d.calcDh(a_r2,b_r2); %diametro hidraulico
 % Aletas
 Z_f = 0.5; % profundidad
 Y = 0.24; % altura pared
@@ -38,12 +38,12 @@ n_f = 100; %número de aletas en pared
 L_f = 0.09; %m longitud aleta
 % Calculos
 Y_f = Y/(2*n_f); % grosor aletas
-C_r1 = C_r1 * 1e-3; C_r2 = C_r2 * 1e-3;
-u_r1 = C_r1/A_r1; u_r2 = C_r2/A_r2;
-Re_r1 = heattransf2d.calcRe(u_r1,Dh_r1,v_r);
-Re_r2 = heattransf2d.calcRe(u_r2,Dh_r2,v_r);
-mf_r1 = p_r * C_r1;
-mf_r2 = p_r * C_r2;
+C_r1 = C_r1 * 1e-3; C_r2 = C_r2 * 1e-3; %conversion caudal a m3/s
+u_r1 = C_r1/A_r1; u_r2 = C_r2/A_r2; % velocidad promedio
+Re_r1 = heattransf2d.calcRe(u_r1,Dh_r1,v_r); %numero de Reynolds
+Re_r2 = heattransf2d.calcRe(u_r2,Dh_r2,v_r); %numero de Reynolds
+mf_r1 = p_r * C_r1; % flujo másico de refrigerante 1
+mf_r2 = p_r * C_r2; % flujo másico de refrigerante 2
 h_1 = heattransf2d.calchref(k_r,Nu,Dh_r1,Re_r1,eD_r);
 h_2 = heattransf2d.calchref(k_r,Nu,Dh_r2,Re_r2,eD_r);
 [h_f, eta_f, efe_f] = heattransf2d.calcfinheq(k,h_env,Y_f,Z_f,L_f);
@@ -66,18 +66,18 @@ heatsystem = heatsystem.solvesystem(); % resolver el sistema
 heatsystem = heatsystem.setTprop(id_r1,mf_r1,Cp_r);
 
 % RESULTADOS
-Z = 0; % plano en eje Z a observar
-Tprop = heatsystem.getTprop;
-Tmax_all = heatsystem.getTmax(Z);
-Tmax_r1 = heatsystem.getTmaxc(id_r1,Z);
-Tmax_r2 = heatsystem.getTmaxc(id_r2,Z);
+Z = 0.5; % plano en eje Z a observar
+Tprop = heatsystem.getTprop; %aumento temperatura promedio en canales
+Tmax_all = heatsystem.getTmax(Z); %temperatura maxima en toda la pieza
+Tmax_r1 = heatsystem.getTmaxc(id_r1,Z); % temperatura maxima en borde canal 1
+Tmax_r2 = heatsystem.getTmaxc(id_r2,Z); % % temperatura maxima en borde canal 2
 disp("RESULTADOS")
-fprintf("    Z: %0.1f m\n",Z) % plano de temperaturas en el eje z
-fprintf("Tprop: %0.2f °C/m\n",Tprop) %aumento temperatura promedio en tubos
-fprintf(" Tmax: %0.3f °C\n",Tmax_all) %temperatura maxima en toda la pieza
+fprintf("    Z: %0.1f m\n",Z)
+fprintf("Tprop: %0.2f °C/m\n",Tprop)
+fprintf(" Tmax: %0.3f °C\n",Tmax_all)
 fprintf(" Yfin: %0.2f cm\n",Y_f*1e2) %grosor/altura aletas
 fprintf("   h1: %0.2f W/m2°C\n", h_1) % coeficiente de convección 1
 fprintf("   h2: %0.2f W/m2°C\n", h_2) % % coeficiente de convección 2
-fprintf("Tmax1: %0.2f°C\n",Tmax_r1) % temperatura maxima en canal 1
-fprintf("Tmax2: %0.2f°C\n",Tmax_r2) % % temperatura maxima en canal 2
+fprintf("Tmax1: %0.2f°C\n",Tmax_r1) 
+fprintf("Tmax2: %0.2f°C\n",Tmax_r2)
 heatsystem.showimtemps(Z) % mostrar temperaturas

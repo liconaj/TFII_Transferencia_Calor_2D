@@ -134,6 +134,10 @@ classdef heattransf2d
             tprop = obj.tprop;
         end
         function Tmax = getTmax(obj,Z)
+            arguments
+                obj
+                Z {mustBeNumeric} = 0
+            end
             Tmax = max(obj.tprop * Z + obj.TempMesh, [], "all");
         end
     end
