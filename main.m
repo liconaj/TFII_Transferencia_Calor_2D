@@ -64,7 +64,6 @@ heatsystem = heatsystem.setupnh(0xC, h_1, T_env); % refrigeracion 1
 heatsystem = heatsystem.setupnh(0xD, h_2, T_env); % refrigeracion 2
 heatsystem = heatsystem.solvesystem(); % resolver el sistema
 heatsystem = heatsystem.setTprop(id_r1,mf_r1,Cp_r);
-heatsystem.showimtemps(Z) % mostrar temperaturas
 
 % RESULTADOS
 Z = 0.5; % plano en eje Z a observar
@@ -81,3 +80,4 @@ fprintf("   h1: %0.2f W/m2°C\n", h_1) % coeficiente de convección 1
 fprintf("   h2: %0.2f W/m2°C\n", h_2) % % coeficiente de convección 2
 fprintf("Tmax1: %0.2f°C\n",Tmax_r1) % temperatura maxima en canal 1
 fprintf("Tmax2: %0.2f°C\n",Tmax_r2) % % temperatura maxima en canal 2
+heatsystem.showimtemps(Z) % mostrar temperaturas
