@@ -36,7 +36,7 @@ C_r1 = 0.35; %(L/s) velocidad media refrigerante 1
 C_r2 = 0.3; %(L/s) velocidad media refrigerante 2
 n_f = 100; %número de aletas en pared
 L_f = 0.09; %m longitud aleta
-
+% Calculos
 Y_f = Y/(2*n_f); % grosor aletas
 C_r1 = C_r1 * 1e-3; C_r2 = C_r2 * 1e-3;
 u_r1 = C_r1/A_r1; u_r2 = C_r2/A_r2;
@@ -57,9 +57,7 @@ heatsystem = heattransf2d(NodeMesh); % Inicialización del sistema
 heatsystem = heatsystem.setupnk(0x6, k); % metal
 heatsystem = heatsystem.setupnq(0x9, q, A); % flujo calor
 heatsystem = heatsystem.setupni(0x0); % aislante
-
-% RESULTADOS
-Z = 0.5; % plano en eje Z a observar
+% Configuraciones variables
 heatsystem = heatsystem.setupnh(0x1, h_env, T_env); % ambiente
 heatsystem = heatsystem.setupnh(0x2, h_f, T_env); % aleta
 heatsystem = heatsystem.setupnh(0xC, h_1, T_env); % refrigeracion 1
@@ -68,11 +66,12 @@ heatsystem = heatsystem.solvesystem(); % resolver el sistema
 heatsystem = heatsystem.setTprop(id_r1,mf_r1,Cp_r);
 heatsystem.showimtemps(Z) % mostrar temperaturas
 
+% RESULTADOS
+Z = 0.5; % plano en eje Z a observar
 Tprop = heatsystem.getTprop;
 Tmax_all = heatsystem.getTmax(Z);
 Tmax_r1 = heatsystem.getTmaxc(id_r1,Z);
 Tmax_r2 = heatsystem.getTmaxc(id_r2,Z);
-
 disp("RESULTADOS")
 fprintf("    Z: %0.1f m\n",Z) % plano de temperaturas en el eje z
 fprintf("Tprop: %0.2f °C/m\n",Tprop) %aumento temperatura promedio en tubos
