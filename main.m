@@ -67,10 +67,18 @@ heatsystem = heatsystem.setupnh(0xD, h_2, T_env); % refrigeracion 2
 heatsystem = heatsystem.solvesystem(); % resolver el sistema
 heatsystem = heatsystem.setTprop(id_r1,mf_r1,Cp_r);
 heatsystem.showimtemps(Z) % mostrar temperaturas
-Tmax_r1 = heatsystem.getTmax(id_r1,Z);
-Tmax_r2 = heatsystem.getTmax(id_r2,Z);
-fprintf("Yfin: %0.2f cm\n",Y_f*1e2)
-fprintf("h R1: %0.2f \n", h_1)
-fprintf("h R2: %0.2f \n", h_2)
-fprintf("Tmax R1: %0.2f°C\n",Tmax_r1)
-fprintf("Tmax R2: %0.2f°C\n",Tmax_r2)
+
+Tprop = heatsystem.getTprop;
+Tmax_all = heatsystem.getTmax(Z);
+Tmax_r1 = heatsystem.getTmaxc(id_r1,Z);
+Tmax_r2 = heatsystem.getTmaxc(id_r2,Z);
+
+disp("RESULTADOS")
+fprintf("    Z: %0.1f m\n",Z) % plano de temperaturas en el eje z
+fprintf("Tprop: %0.2f °C/m\n",Tprop) %aumento temperatura promedio en tubos
+fprintf(" Tmax: %0.3f °C\n",Tmax_all) %temperatura maxima en toda la pieza
+fprintf(" Yfin: %0.2f cm\n",Y_f*1e2) %grosor/altura aletas
+fprintf("   h1: %0.2f W/m2°C\n", h_1) % coeficiente de convección 1
+fprintf("   h2: %0.2f W/m2°C\n", h_2) % % coeficiente de convección 1
+fprintf("Tmax1: %0.2f°C\n",Tmax_r1) % temperatura maxima en canal 1
+fprintf("Tmax2: %0.2f°C\n",Tmax_r2) % % temperatura maxima en canal 1

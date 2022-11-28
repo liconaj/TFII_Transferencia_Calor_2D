@@ -122,13 +122,19 @@ classdef heattransf2d
             obj = calcheatconvec(obj);
             obj.tprop = obj.HeatConvec(dec2hex(hid)) / (mf * Cp);
         end
-        function Tmax = getTmax(obj,hid,Z)
+        function Tmaxc = getTmaxc(obj,hid,Z)
             arguments
                 obj
                 hid (1,1) char
                 Z {mustBeNumeric} = 0
             end
-            Tmax = obj.tprop * Z + obj.TmaxConvec(dec2hex(hid));
+            Tmaxc = obj.tprop * Z + obj.TmaxConvec(dec2hex(hid));
+        end
+        function tprop = getTprop(obj)
+            tprop = obj.tprop;
+        end
+        function Tmax = getTmax(obj,Z)
+            Tmax = max(obj.tprop * Z + obj.TempMesh, [], "all");
         end
     end
     methods (Access = private)
