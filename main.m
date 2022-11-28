@@ -78,6 +78,6 @@ fprintf("Tprop: %0.2f °C/m\n",Tprop) %aumento temperatura promedio en tubos
 fprintf(" Tmax: %0.3f °C\n",Tmax_all) %temperatura maxima en toda la pieza
 fprintf(" Yfin: %0.2f cm\n",Y_f*1e2) %grosor/altura aletas
 fprintf("   h1: %0.2f W/m2°C\n", h_1) % coeficiente de convección 1
-fprintf("   h2: %0.2f W/m2°C\n", h_2) % % coeficiente de convección 1
+fprintf("   h2: %0.2f W/m2°C\n", h_2) % % coeficiente de convección 2
 fprintf("Tmax1: %0.2f°C\n",Tmax_r1) % temperatura maxima en canal 1
-fprintf("Tmax2: %0.2f°C\n",Tmax_r2) % % temperatura maxima en canal 1
+fprintf("Tmax2: %0.2f°C\n",Tmax_r2) % % temperatura maxima en canal 2
