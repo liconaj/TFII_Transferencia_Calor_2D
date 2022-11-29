@@ -114,13 +114,15 @@ classdef heattransf2d
             ntype = 'I';
             obj.NodeParams(dec2hex(id)) = struct("type",ntype);
         end
-        function obj = setTprop(obj, hid, mf, Cp)
-            %SETTPROP
-            % hid = codigo color de la refrigeracion
-            % mf = flujo másico
-            % Cp = calor especifico
+        function obj = setTprop(obj,id,s)
+            arguments
+                obj
+                id (1,1) char
+                s {struct}
+            end
+            mf = s.p * s.C;
             obj = calcheatconvec(obj);
-            obj.tprop = obj.HeatConvec(dec2hex(hid)) / (mf * Cp);
+            obj.tprop = obj.HeatConvec(dec2hex(id)) / (mf * s.cp);
         end
         function Tmaxc = getTmaxc(obj,hid,Z)
             arguments
@@ -139,6 +141,9 @@ classdef heattransf2d
                 Z {mustBeNumeric} = 0
             end
             Tmax = max(obj.tprop * Z + obj.TempMesh, [], "all");
+        end
+        function Q = getHeatConvec(obj,id,L)
+            Q = obj.HeatConvec(dec2hex(id))*L;
         end
     end
     methods (Access = private)
@@ -387,65 +392,67 @@ classdef heattransf2d
             seekpos = find(string(adjnodes) == nodeseek);
             shiftsteps = seekpos - defnodepos;
         end
-        function [heq, eta, efe] = calcfinheq(k,h,Y,Z,L)
+        function [heq, eta, efe] = calcfinheq(s,k,h)
             % CALCFINHEQ
-            % Parámetros
-            %   k = coeficiente de conducción de la pieza
-            %   h = coeficiente de convección del entorno
-            %   Y = longitud pared de aletas
-            %   Z = profundidad o ancho de la aleta
-            %   L = longitud de la aleta            
             % Retorno
             %   heq = coeficiente de convección equivalente debi a la aleta
             %   eta = eficiencia de la aleta
-            %   efe = efectividad de la aleta            
-            Ak = Y * Z; % area de la base
-            P = 2 * (Y + Z);
+            %   efe = efectividad de la aleta
+            arguments
+                s {struct}
+                k {mustBeNumeric}
+                h {mustBeNumeric}
+            end
+            Ak = s.t * s.Z; % area de la base
+            P = 2 * (s.t + s.Z);
             nu = sqrt(h * P / (k * Ak));
-            eta = tanh(nu * L) /  (nu * L);
-            Ac = L * P; % area de la aleta
-            efe = eta * Ac / Ak; 
-            heq = (h/2) * (1+ eta * Ac/Ak);
+            eta = tanh(nu * s.L) /  (nu * s.L);
+            Ac = s.L * P; % area de la aleta
+            efe = eta * Ac / Ak;
+            heq = (h/2) * (1 + eta * Ac/Ak);
         end
-        function h = calchref(kf,Nu,Dh,Re,eD)
-            % CALCREFH
-            % Parámetros
-            %   kf = coeficiente de conducción del fluido
-            %   Nu = número de Nusselt laminar
-            %   Dh = Diametro hidráulico del canal
-            %   Re = Número de Reynolds del fluido
-            f = heattransf2d.calcmoody(Re, eD);
-            if Re > 3500
-                Nu = f * Re / 2;
+        function h = calchint(s)
+            arguments
+                s {struct}
             end
-            h = Nu * kf / Dh;
-        end
-        function f = calcmoody(Re,eD)
-            % CALCMOODY
-            % Parámetros
-            %   Re = número de Reynolds
-            %   eD = rugosidad relativa
-            shape = size(Re);
-            Re = Re(:);
-            eD = eD(:);
-            f = zeros(size(Re));
-            for k = 1:numel(Re)
-                if Re(k) > 3500
-                    f(k) = fzero(@(f) 1/sqrt(f)+2*log10(eD(k)/3.7+2.51/(Re(k)*sqrt(f))),[eps,1]);
-                else%if Re(k) < 2500
-                    f(k) = 64/Re(k);
-                %else
-                %    f(k) = NaN;
-                end
+            Pr = s.v * s.p * s.cp / s.k;
+            if s.Re >= 1e4 % turbulento
+                Nu = 0.023 * s.Re^(4/5) * Pr^(1/3);
+            else % laminar
+                Nu = s.Nul;
             end
-            f = reshape(f,shape);
+            h = Nu * s.k / s.Dh;
         end
-        function Re = calcRe(u,Dh,v)
-            Re = u * Dh / v;
+        function h = calchext(s)
+            arguments
+                s {struct} 
+            end
+            Pr = s.v * s.p * s.cp / s.k;
+            if s.Rex >= 5e5 % turbulento
+                Nu = 0.037 * s.Rex^(4/5) * Pr^(1/3);
+            else % laminar
+                Nu = 0.332 * s.Rex^(1/2) * Pr^(1/3);
+            end
+            h = Nu * s.k / s.x;
         end
-        function Dh = calcDh(a,b)
+        function Re = calcRe(s)
+            arguments
+                s {struct}
+            end
+            Re = s.u * s.Dh / s.v;
+        end
+        function Rex = calcRex(s)
+            arguments
+                s {struct}
+            end
+            Rex = s.u * s.x / s.v;
+        end
+        function Dh = calcDh(s)
             % Diámetro hidráulico de un ducto rectangular
-            Dh = 2*a*b/(a+b);
+            arguments
+                s {struct}
+            end
+            Dh = 2 * s.a * s.b / (s.a + s.b);
         end
     end
 end
