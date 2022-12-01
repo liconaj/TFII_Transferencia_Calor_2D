@@ -7,15 +7,17 @@ classdef heattransf2d
         NodeParams   % Diccionario de parametros asociados a un nodo
         HeatConvec   % Diccionario de calor en paredes convección
         TmaxConvec   % Diccionario de temperatura máxima en paredes convección
+        PerimConvec  % Diccionario de el perimetro de paredes convección
         MeshIndex
+        dx
     end
     properties (GetAccess = private)
         NodeMesh
-        dx
         yp, yn
         xp, xn
         numeqs
         tprop
+        L
     end
     methods
         function obj = heattransf2d(NodeMesh)
@@ -25,7 +27,6 @@ classdef heattransf2d
             obj.NodeMesh = NodeMesh;
             obj.dx = obj.NodeMesh.dx;
             obj.NodeParams = dictionary();
-            obj.HeatConvec = dictionary();
             obj.TmaxConvec = dictionary();
             obj.tprop = 1;
         end
@@ -48,6 +49,8 @@ classdef heattransf2d
             obj.SystemMatrix = zeros(obj.numeqs);
             obj.SystemVector = zeros(obj.numeqs, 1);
             ySystem = 0;
+            tic
+            fprintf("Calculando coeficientes... ")
             for y = 1:obj.NodeMesh.rows
                 for x = 1:obj.NodeMesh.cols
                     nodename = obj.NodeMesh.Data{y, x};
@@ -72,16 +75,19 @@ classdef heattransf2d
                     end
                 end
             end
+            fprintf("Hecho. [%0.fs]\n",toc)
+            tic
+            fprintf("Resolviendo sistema....... ")
             obj.SystemTemps = obj.SystemMatrix\obj.SystemVector;
+            fprintf("Hecho. [%0.fs]\n",toc)
             obj = createtempmesh(obj);
-            obj = calcheatconvec(obj);
         end
         function obj = setupnk(obj,id,k,q)
             arguments
                 obj heattransf2d
                 id (1,1) char
-                k {mustBeNumeric,mustBePositive}
-                q {mustBeNumeric,mustBeNonnegative} = 0
+                k {mustBeNumeric}
+                q {mustBeNumeric} = 0
             end
             ntype = 'K';
             obj.NodeParams(dec2hex(id)) = struct("type",ntype,"k",k,"q",q);
@@ -90,8 +96,8 @@ classdef heattransf2d
             arguments
                 obj heattransf2d
                 id (1,1) char
-                h {mustBeNumeric,mustBePositive}
-                T {mustBeNumeric,mustBePositive}
+                h {mustBeNumeric}
+                T {mustBeNumeric}
             end
             ntype = 'H';
             obj.NodeParams(dec2hex(id)) = struct("type",ntype,"h",h,"T",T);
@@ -100,7 +106,7 @@ classdef heattransf2d
             arguments
                 obj heattransf2d
                 id (1,1) char
-                q {mustBeNumeric,mustBePositive}
+                q {mustBeNumeric}
                 A {mustBeNumeric,mustBePositive}
             end
             ntype = 'Q';
@@ -114,15 +120,19 @@ classdef heattransf2d
             ntype = 'I';
             obj.NodeParams(dec2hex(id)) = struct("type",ntype);
         end
-        function obj = setTprop(obj,id,s)
+        function obj = setTprop(obj,id,s,L)
             arguments
                 obj
                 id (1,1) char
-                s {struct}
+                s struct
+                L {mustBeNumeric, mustBePositive} = 1
             end
+            id = dec2hex(id);
+            obj.L = L;
             mf = s.p * s.C;
             obj = calcheatconvec(obj);
-            obj.tprop = obj.HeatConvec(dec2hex(id)) / (mf * s.cp);
+            Q = obj.HeatConvec(id);
+            obj.tprop =  Q / (mf * s.cp);
         end
         function Tmaxc = getTmaxc(obj,hid,Z)
             arguments
@@ -142,8 +152,27 @@ classdef heattransf2d
             end
             Tmax = max(obj.tprop * Z + obj.TempMesh, [], "all");
         end
-        function Q = getHeatConvec(obj,id,L)
-            Q = obj.HeatConvec(dec2hex(id))*L;
+        function Q = getHeatConvec(obj,id,opt)
+            arguments
+                obj
+                id = NaN
+                opt = ''
+            end
+            if isnan(id)
+                Q = sum(values(obj.HeatConvec)) * obj.L;
+                P = sum(values(obj.PerimConvec));
+            else
+                id = dec2hex(id);
+                Q = obj.HeatConvec(id) * obj.L;
+                P = obj.PerimConvec(id);
+            end
+            if strcmp(opt,'A')
+                Q = Q / (P * obj.L);
+            elseif strcmp(opt,'L')
+                Q = Q / obj.L;
+            elseif strcmp(opt,'P')
+                Q = Q / P;
+            end
         end
     end
     methods (Access = private)
@@ -345,6 +374,8 @@ classdef heattransf2d
             obj.numeqs = i;
         end
         function obj = calcheatconvec(obj)
+            obj.HeatConvec = dictionary();
+            obj.PerimConvec = dictionary();
             for y = 1:obj.NodeMesh.rows
                 for x = 1:obj.NodeMesh.cols
                     nodename = obj.NodeMesh.Data{y, x};
@@ -358,10 +389,12 @@ classdef heattransf2d
                         T = obj.TempMesh(y, x);
                         Q = h * obj.dx * (T-Th);
                         if ~isConfigured(obj.HeatConvec) || ~isKey(obj.HeatConvec,nameh)
+                            obj.PerimConvec(nameh) = 0;
                             obj.HeatConvec(nameh) = 0;
                             obj.TmaxConvec(nameh) = T;
                         end
                         obj.HeatConvec(nameh) = obj.HeatConvec(nameh) + Q;
+                        obj.PerimConvec(nameh) = obj.PerimConvec(nameh) + obj.dx;
                         if T > obj.TmaxConvec(nameh)
                             obj.TmaxConvec(nameh) = T;
                         end
@@ -399,7 +432,7 @@ classdef heattransf2d
             %   eta = eficiencia de la aleta
             %   efe = efectividad de la aleta
             arguments
-                s {struct}
+                s struct
                 k {mustBeNumeric}
                 h {mustBeNumeric}
             end
@@ -413,7 +446,7 @@ classdef heattransf2d
         end
         function h = calchint(s)
             arguments
-                s {struct}
+                s struct
             end
             Pr = s.v * s.p * s.cp / s.k;
             if s.Re >= 1e4 % turbulento
@@ -425,10 +458,10 @@ classdef heattransf2d
         end
         function h = calchext(s)
             arguments
-                s {struct} 
+                s struct
             end
             Pr = s.v * s.p * s.cp / s.k;
-            if s.Rex >= 5e5 % turbulento
+            if s.Rex >= 1e5 % turbulento (o 5e5)
                 Nu = 0.037 * s.Rex^(4/5) * Pr^(1/3);
             else % laminar
                 Nu = 0.332 * s.Rex^(1/2) * Pr^(1/3);
@@ -437,20 +470,20 @@ classdef heattransf2d
         end
         function Re = calcRe(s)
             arguments
-                s {struct}
+                s struct
             end
             Re = s.u * s.Dh / s.v;
         end
         function Rex = calcRex(s)
             arguments
-                s {struct}
+                s struct
             end
             Rex = s.u * s.x / s.v;
         end
         function Dh = calcDh(s)
             % Diámetro hidráulico de un ducto rectangular
             arguments
-                s {struct}
+                s struct
             end
             Dh = 2 * s.a * s.b / (s.a + s.b);
         end

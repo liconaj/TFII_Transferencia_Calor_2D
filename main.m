@@ -7,7 +7,7 @@ addpath heattransf2d
 % CONSTANTES
 q = 10e3; %(W) debe ser 10, 20 o 30 para el problema
 k = 50; % coeficiente de conduccion pieza
-T_env = 20; %(°C) temperatura ambiente
+T_env = 0; %(°C) temperatura ambiente
 L = 0.5; %(m) largo del sistema
 A = (0.12*2+0.14) * L;  % área por la que entra calor
 
@@ -56,7 +56,7 @@ fin.Z = 0.5; %(m) profundidad
 rf1.C = 0.89e-3; %(m3/s) caudal 
 rf2.C = 0.78e-3;
 %fin.n = 50; %número de aletas en pared
-fin.t = 2e-3; %(m) grosor aletas
+fin.t = 5e-3; %(m) grosor aletas
 fin.L = 6e-2; %(m) longitud de aletas
 
 % Calculos
@@ -88,36 +88,40 @@ heatsystem = heatsystem.setupnh(fin.id,fin.h,air.T); % aleta
 heatsystem = heatsystem.setupnh(rf1.id,rf1.h,rf1.T); % refrigeracion 1
 heatsystem = heatsystem.setupnh(rf2.id,rf2.h,rf2.T); % refrigeracion 2
 heatsystem = heatsystem.solvesystem(); % resolver el sistema
-heatsystem = heatsystem.setTprop(rf1.id, rf1);
+heatsystem = heatsystem.setTprop(rf1.id, rf1, L);
 
 % RESULTADOS
 Z = L; % plano en eje Z a observar
 Tprop = heatsystem.getTprop; %aumento temperatura promedio en canales
 Tmax_all = heatsystem.getTmax(Z); %temperatura maxima en toda la pieza
-Tmax_r1 = heatsystem.getTmaxc(rf1.id,Z); % temperatura maxima en borde canal 1
-Tmax_r2 = heatsystem.getTmaxc(rf2.id,Z); % temperatura maxima en borde canal 2
-Q_r1 = heatsystem.getHeatConvec(rf1.id,L); % Flujo de calor en canal 1
-Q_r2 = heatsystem.getHeatConvec(rf2.id,L); % Flujo de calor en canal 1
-Q_f = heatsystem.getHeatConvec(fin.id,L); % Flujo de calor en pared aletas
+Tmax_rf1 = heatsystem.getTmaxc(rf1.id,Z); % temperatura maxima en borde canal 1
+Tmax_rf2 = heatsystem.getTmaxc(rf2.id,Z); % temperatura maxima en borde canal 2
+Q_rf1 = heatsystem.getHeatConvec(rf1.id); % (W/m2) Flujo de calor en canal 1
+Q_rf2 = heatsystem.getHeatConvec(rf2.id); % (W/m2) Flujo de calor en canal 1
+Q_fin = heatsystem.getHeatConvec(fin.id); % (W/m2) Flujo de calor en pared aletas
+Q_air = heatsystem.getHeatConvec(air.id); % (W/m2)
+Q_out = heatsystem.getHeatConvec();
 fprintf("\nRESULTADOS\n\n")
 fprintf("    Z: %0.1f m\n",Z)
 fprintf("Tprop: %0.2f °C/m\n",Tprop)
+fprintf(" Q_in: %0.2f W\n",q)
+fprintf("Q_out: %0.2f W\n",Q_out)
 %fprintf("t_fin: %0.2f cm\n",fin.Y*1e2) %grosor/altura aletas
-%{
-fprintf(" Qfin: %0.2f W\n", Q_f)
-fprintf("   Q1: %0.2f W\n", Q_r1)
-fprintf("   Q2: %0.2f W\n", Q_r2)
-%}
 fprintf("\nCoeficientes de convección\n")
 fprintf("h_rf1: %0.2f W/m2°C\n", rf1.h) % coeficiente de convección 1
 fprintf("h_rf2: %0.2f W/m2°C\n", rf2.h) % coeficiente de convección 2
 fprintf("h_air: %0.2f W/m2°C\n", air.h) % coeficiente de convección 2
 fprintf("h_fin: %0.2f W/m2°C\n", fin.h) % coeficiente de conveccion aletas
+fprintf("\nFlujo de calor en paredes con convección\n")
+fprintf("Q_rf1: %0.2f W\n",Q_rf1)
+fprintf("Q_rf2: %0.2f W\n",Q_rf2)
+fprintf("Q_air: %0.2f W\n",Q_air)
+fprintf("Q_fin: %0.2f W\n",Q_fin)
 fprintf("\nVelocidades promedio fluidos\n")
 fprintf("u_rf1: %0.2f m/s\n",rf1.u)
 fprintf("u_rf2: %0.2f m/s\n",rf2.u)
 fprintf("\nTemperaturas máximas\n")
 fprintf("    T_max: %0.3f °C\n",Tmax_all)
-fprintf("T_max_rf1: %0.2f°C\n",Tmax_r1)
-fprintf("T_max_rf2: %0.2f°C\n",Tmax_r2)
+fprintf("T_max_rf1: %0.2f°C\n",Tmax_rf1)
+fprintf("T_max_rf2: %0.2f°C\n",Tmax_rf2)
 heatsystem.showimtemps(Z) % mostrar temperaturas
