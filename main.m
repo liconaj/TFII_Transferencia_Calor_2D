@@ -7,7 +7,7 @@ addpath heattransf2d
 % CONSTANTES
 q = 10e3; %(W) debe ser 10, 20 o 30 para el problema
 k = 50; % coeficiente de conduccion pieza
-T_env = 0; %(°C) temperatura ambiente
+T_env = 20; %(°C) temperatura ambiente
 L = 0.5; %(m) largo del sistema
 A = (0.12*2+0.14) * L;  % área por la que entra calor
 
@@ -18,7 +18,7 @@ air.u = 10; %(m/s) velocidad media
 air.p = 1.2041; %(kg/m3) densidad del aire
 air.v = 1.8e-5 / air.p; %(m2/s) viscosidad cinematica
 air.k = 0.02; %(W/m°C) conductividad térmica a 20-25°C
-air.x = L; %(m) longitud pared en la que actúa el aire
+air.L = L; %(m) longitud pared en la que actúa el aire
 air.T = T_env; % temperatura
 air.cp = 1000; %(J/kg°C) calor específico del aire
 
@@ -36,7 +36,7 @@ rf1.id = 0xC; %id color en skecth;
 rf1.a = 0.02; %(m) altura canal
 rf1.b = 0.16; %(m) base canal
 rf1.A = rf1.a * rf1.b; %(m2) área canal
-rf1.Nul = 6.49; % numero de Nusselt laminar con q' constante.
+rf1.Nulam = 6.49; % numero de Nusselt laminar con q' constante.
 
 % Refrigeracion 2 (sup)
 rf2 = wat;
@@ -44,34 +44,37 @@ rf2.id = 0xD; %id color en skecth;
 rf2.a = 0.12; %(m) altura canal
 rf2.b = 0.04; %(m) base canal
 rf2.A = rf2.a * rf2.b; %(m2) área canal
-rf2.Nul = 3.61; % numero de Nusselt laminar con q' constante.
+rf2.Nulam = 3.61; % numero de Nusselt laminar con q' constante.
 
 % Aletas
 fin = struct();
 fin.id = 0x2;
 fin.Z = 0.5; %(m) profundidad
-%fin.Y = 0.24; %(m) altura pared aletas
+fin.Y = 0.24; %(m) altura pared aletas
 
 % VALORES VARIABLES
 rf1.C = 0.89e-3; %(m3/s) caudal 
 rf2.C = 0.78e-3;
 %fin.n = 50; %número de aletas en pared
-fin.t = 5e-3; %(m) grosor aletas
-fin.L = 6e-2; %(m) longitud de aletas
+fin.t = 10e-3; %(m) grosor aletas
+fin.L = 10e-2; %(m) longitud de aletas
 
 % Calculos
 %fin.t = fin.Y / (2 * fin.n); %(m) grosor aletas
 rf1.u = rf1.C / rf1.A; %(m/s) velocidad promedio
 rf2.u = rf2.C / rf2.A;
-rf1.Dh = heattransf2d.calcDh(rf1); %(m) diametro hidraulico
-rf2.Dh = heattransf2d.calcDh(rf2);
-rf1.Re = heattransf2d.calcRe(rf1); %numero de Reynolds
-rf2.Re = heattransf2d.calcRe(rf2);
-air.Rex = heattransf2d.calcRex(air); %numero de Reynolds lineal
-rf1.h = heattransf2d.calchint(rf1); %coeficiente de convección
-rf2.h = heattransf2d.calchint(rf2);
-air.h = heattransf2d.calchext(air);
-[fin.h, fin.eta, fin.efe] = heattransf2d.calcfinheq(fin,k,air.h);
+rf1.Pr = heattransf2d.calcPr(rf1.v,rf1.p,rf1.cp,rf1.k); %numero de Prandtl
+rf2.Pr = heattransf2d.calcPr(rf2.v,rf2.p,rf2.cp,rf2.k);
+air.Pr = heattransf2d.calcPr(air.v,air.p,air.cp,air.k);
+rf1.Dh = heattransf2d.calcDh(rf1.a,rf1.b); %(m) diametro hidraulico
+rf2.Dh = heattransf2d.calcDh(rf2.a,rf2.b);
+rf1.Re = heattransf2d.calcRe(rf1.u,rf1.Dh,rf1.v); %numero de Reynolds
+rf2.Re = heattransf2d.calcRe(rf2.u,rf2.Dh,rf2.v);
+air.ReL = heattransf2d.calcReL(air.u,air.L,air.v); %numero de Reynolds lineal
+rf1.h = heattransf2d.calchint(rf1.k,rf1.Dh,rf1.Pr,rf1.Re,rf1.Nulam); %coeficiente de convección
+rf2.h = heattransf2d.calchint(rf2.k,rf2.Dh,rf2.Pr,rf2.Re,rf2.Nulam);
+air.h = heattransf2d.calchext(air.k,air.L,air.Pr,air.ReL);
+[fin.h, fin.eta, fin.efe] = heattransf2d.calcfinheq(fin.t,fin.L,fin.Z,k,air.h);
 
 % SISTEMA
 cellsize = 2e-2;

@@ -425,67 +425,54 @@ classdef heattransf2d
             seekpos = find(string(adjnodes) == nodeseek);
             shiftsteps = seekpos - defnodepos;
         end
-        function [heq, eta, efe] = calcfinheq(s,k,h)
+        function [heq, eta, efe] = calcfinheq(t,L,Z,k,h)
             % CALCFINHEQ
+            % Parámetros
+            %   t = grosor
+            %   L = longitud
+            %   Z = profundidad o ancho
+            %   k = coeficiente de conducción de la pieza
+            %   h = coeficiente de convección del entorno
             % Retorno
             %   heq = coeficiente de convección equivalente debi a la aleta
             %   eta = eficiencia de la aleta
             %   efe = efectividad de la aleta
-            arguments
-                s struct
-                k {mustBeNumeric}
-                h {mustBeNumeric}
-            end
-            Ak = s.t * s.Z; % area de la base
-            P = 2 * (s.t + s.Z);
+            Ak = t * Z; % area de la base
+            P = 2 * (t + Z);
+            Ac = L * P; % area de la aleta
             nu = sqrt(h * P / (k * Ak));
-            eta = tanh(nu * s.L) /  (nu * s.L);
-            Ac = s.L * P; % area de la aleta
+            eta = tanh(nu * L) /  (nu * L);
             efe = eta * Ac / Ak;
             heq = (h/2) * (1 + eta * Ac/Ak);
         end
-        function h = calchint(s)
-            arguments
-                s struct
-            end
-            Pr = s.v * s.p * s.cp / s.k;
-            if s.Re >= 1e4 % turbulento
-                Nu = 0.023 * s.Re^(4/5) * Pr^(1/3);
+        function Pr = calcPr(v,p,cp,k)
+            Pr = v * p * cp / k;
+        end
+        function h = calchint(k,Dh,Pr,Re,Nulam)
+            if Re >= 1e4 % turbulento
+                Nu = 0.023 * Re^(4/5) * Pr^(1/3);
             else % laminar
-                Nu = s.Nul;
+                Nu = Nulam;
             end
-            h = Nu * s.k / s.Dh;
+            h = Nu * k / Dh;
         end
-        function h = calchext(s)
-            arguments
-                s struct
-            end
-            Pr = s.v * s.p * s.cp / s.k;
-            if s.Rex >= 1e5 % turbulento (o 5e5)
-                Nu = 0.037 * s.Rex^(4/5) * Pr^(1/3);
+        function h = calchext(k,L,Pr,ReL)
+            if ReL >= 5e5 % turbulento
+                Nu = 0.037 * ReL^(4/5) * Pr^(1/3);
             else % laminar
-                Nu = 0.332 * s.Rex^(1/2) * Pr^(1/3);
+                Nu = 0.664 * ReL^(1/2) * Pr^(1/3);
             end
-            h = Nu * s.k / s.x;
+            h = Nu * k / L;
         end
-        function Re = calcRe(s)
-            arguments
-                s struct
-            end
-            Re = s.u * s.Dh / s.v;
+        function Re = calcRe(u,Dh,v)
+            Re = u * Dh / v;
         end
-        function Rex = calcRex(s)
-            arguments
-                s struct
-            end
-            Rex = s.u * s.x / s.v;
+        function ReL = calcReL(u,L,v)
+            ReL = u * L / v;
         end
-        function Dh = calcDh(s)
+        function Dh = calcDh(a,b)
             % Diámetro hidráulico de un ducto rectangular
-            arguments
-                s struct
-            end
-            Dh = 2 * s.a * s.b / (s.a + s.b);
+            Dh = 2 * a * b / (a + b);
         end
     end
 end
