@@ -35,11 +35,29 @@ classdef heattransf2d
                 obj
                 Z {mustBeNumeric} = 0
             end
-            figure
             obj = calcmainnodespos(obj);
             tempmesh = obj.TempMesh(obj.yp:obj.yn,obj.xp:obj.xn);
             imagesc(obj.tprop * Z + tempmesh)
             colorbar
+            daspect([1 1 1])
+        end
+        function showcttemps(obj,Z,levels,filled)
+            arguments
+                obj
+                Z {mustBeNumeric} = 0
+                levels = 10
+                filled = true
+            end
+            obj = calcmainnodespos(obj);
+            tempmesh = obj.TempMesh(obj.yp:obj.yn,obj.xp:obj.xn);
+            tempmesh = tempmesh(end:-1:1,:);
+            if filled
+                contourf(obj.tprop * Z + tempmesh,levels,'LineColor','flat')
+            else
+                contour(obj.tprop * Z + tempmesh,levels)
+            end
+            colorbar
+            set(gca,'Color','k')
             daspect([1 1 1])
         end
         function obj = solvesystem(obj)

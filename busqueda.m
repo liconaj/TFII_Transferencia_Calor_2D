@@ -5,7 +5,7 @@ clear
 addpath heattransf2d
 
 % CONSTANTES
-q = 10e3; %(W) debe ser 10, 20 o 30 para el problema
+q = 30e3; %(W) debe ser 10, 20 o 30 para el problema
 k = 50; % coeficiente de conduccion pieza
 T_env = 20; %(°C) temperatura ambiente
 L = 0.5; %(m) largo del sistema
@@ -40,7 +40,7 @@ rfg.k = 0.34; %(W/m°C) conductividad térmica a 20°C
 rfg.T = T_env; %(°C) temperatura de entrada
 
 % Refigeracion 1 (izq)
-rf1 = wat;
+rf1 = rfg;
 rf1.id = 0xC; %id color en skecth;
 rf1.a = 0.02; %(m) altura canal
 rf1.b = 0.16; %(m) base canal
@@ -48,7 +48,7 @@ rf1.A = rf1.a * rf1.b; %(m2) área canal
 rf1.Nulam = 6.49; % numero de Nusselt laminar con q' constante.
 
 % Refrigeracion 2 (sup)
-rf2 = wat;
+rf2 = rfg;
 rf2.id = 0xD; %id color en skecth;
 rf2.a = 0.12; %(m) altura canal
 rf2.b = 0.04; %(m) base canal
@@ -63,31 +63,20 @@ fin.Y = 0.24; %(m) altura pared aletas
 
 % VALORES VARIABLES
 rf1.C = 0.9e-3; %(m3/s) caudal 
-rf2.C = 0.8e-3;
+rf2.C = 0.97e-3;
 %fin.n = 50; %número de aletas en pared
-fin.t = 10e-3; %(m) grosor aletas
+fin.t = 1e-2; %(m) grosor aletas
 fin.L = 10e-2; %(m) longitud de aletas
 
-% Calculos
-%fin.t = fin.Y / (2 * fin.n); %(m) grosor aletas
-rf1.u = rf1.C / rf1.A; %(m/s) velocidad promedio
-rf2.u = rf2.C / rf2.A;
-rf1.Pr = heattransf2d.calcPr(rf1.v,rf1.p,rf1.cp,rf1.k); %numero de Prandtl
-rf2.Pr = heattransf2d.calcPr(rf2.v,rf2.p,rf2.cp,rf2.k);
+%
 air.Pr = heattransf2d.calcPr(air.v,air.p,air.cp,air.k);
-rf1.Dh = heattransf2d.calcDh(rf1.a,rf1.b); %(m) diametro hidraulico
-rf2.Dh = heattransf2d.calcDh(rf2.a,rf2.b);
-rf1.Re = heattransf2d.calcRe(rf1.u,rf1.Dh,rf1.v); %numero de Reynolds
-rf2.Re = heattransf2d.calcRe(rf2.u,rf2.Dh,rf2.v);
 air.ReL = heattransf2d.calcReL(air.u,air.L,air.v); %numero de Reynolds lineal
-rf1.h = heattransf2d.calchint(rf1.k,rf1.Dh,rf1.Pr,rf1.Re,rf1.Nulam); %coeficiente de convección
-rf2.h = heattransf2d.calchint(rf2.k,rf2.Dh,rf2.Pr,rf2.Re,rf2.Nulam);
 air.h = heattransf2d.calchext(air.k,air.L,air.Pr,air.ReL);
 [fin.h, fin.eta, fin.efe] = heattransf2d.calcfinheq(fin.t,fin.L,fin.Z,k,air.h);
 
 % SISTEMA
 cellsize = 2e-2;
-celldivisions = 10;
+celldivisions = 6;
 modelo = "modelos/sketch.png";
 NodeMesh = nodemesh(modelo, cellsize, celldivisions);
 heatsystem = heattransf2d(NodeMesh); % Inicialización del sistema
@@ -97,17 +86,57 @@ heatsystem = heatsystem.setupni(0x0); % aislante
 % Configuraciones variables
 heatsystem = heatsystem.setupnh(air.id,air.h,air.T); % ambiente
 heatsystem = heatsystem.setupnh(fin.id,fin.h,air.T); % aleta
+
+rf2.C = 2.4e-3;
+Z = L; % plano en eje Z a observar
+tmax = @(C) calctrf(1,C,heatsystem,rf1,rf2,Z,L) - 170;
+c = fsolve(tmax,0.1);
+
+function Tmax = calctrf(opt,C,heatsystem, rf1, rf2, Z, L)
+
+%
+%re = @(C) heattransf2d.calcRe(C/rf2.A,rf2.Dh,rf2.v) - 1e4;
+%c2 = fsolve(re,0);
+%
+switch opt
+    case 1
+        rf1.C = C;
+    case 2
+        rf2.C = C;
+end
+
+% Calculos
+%fin.t = fin.Y / (2 * fin.n); %(m) grosor aletas
+rf1.u = rf1.C / rf1.A; %(m/s) velocidad promedio
+rf2.u = rf2.C / rf2.A;
+rf1.Pr = heattransf2d.calcPr(rf1.v,rf1.p,rf1.cp,rf1.k); %numero de Prandtl
+rf2.Pr = heattransf2d.calcPr(rf2.v,rf2.p,rf2.cp,rf2.k);
+
+rf1.Dh = heattransf2d.calcDh(rf1.a,rf1.b); %(m) diametro hidraulico
+rf2.Dh = heattransf2d.calcDh(rf2.a,rf2.b);
+rf1.Re = heattransf2d.calcRe(rf1.u,rf1.Dh,rf1.v); %numero de Reynolds
+rf2.Re = heattransf2d.calcRe(rf2.u,rf2.Dh,rf2.v);
+rf1.h = heattransf2d.calchint(rf1.k,rf1.Dh,rf1.Pr,rf1.Re,rf1.Nulam); %coeficiente de convección
+rf2.h = heattransf2d.calchint(rf2.k,rf2.Dh,rf2.Pr,rf2.Re,rf2.Nulam);
+
 heatsystem = heatsystem.setupnh(rf1.id,rf1.h,rf1.T); % refrigeracion 1
 heatsystem = heatsystem.setupnh(rf2.id,rf2.h,rf2.T); % refrigeracion 2
+
 heatsystem = heatsystem.solvesystem(); % resolver el sistema
 heatsystem = heatsystem.setTprop(rf1.id, rf1, L);
 
 % RESULTADOS
-Z = L; % plano en eje Z a observar
-Tprop = heatsystem.getTprop; %aumento temperatura promedio en canales
-Tmax_all = heatsystem.getTmax(Z); %temperatura maxima en toda la pieza
+%Tprop = heatsystem.getTprop; %aumento temperatura promedio en canales
+%Tmax_all = heatsystem.getTmax(Z); %temperatura maxima en toda la pieza
 Tmax_rf1 = heatsystem.getTmaxc(rf1.id,Z); % temperatura maxima en borde canal 1
 Tmax_rf2 = heatsystem.getTmaxc(rf2.id,Z); % temperatura maxima en borde canal 2
+switch opt
+    case 1
+        Tmax = Tmax_rf1;
+    case 2
+        Tmax = Tmax_rf2;
+end
+%{
 Q_rf1 = heatsystem.getHeatConvec(rf1.id); % (W/m2) Flujo de calor en canal 1
 Q_rf2 = heatsystem.getHeatConvec(rf2.id); % (W/m2) Flujo de calor en canal 1
 Q_fin = heatsystem.getHeatConvec(fin.id); % (W/m2) Flujo de calor en pared aletas
@@ -136,6 +165,6 @@ fprintf("\nTemperaturas máximas\n")
 fprintf("    T_max: %0.3f °C\n",Tmax_all)
 fprintf("T_max_rf1: %0.2f°C\n",Tmax_rf1)
 fprintf("T_max_rf2: %0.2f°C\n",Tmax_rf2)
-%heatsystem.showimtemps(Z) % mostrar temperaturas
-
-heatsystem.showcttemps(Z,30)
+heatsystem.showimtemps(Z) % mostrar temperaturas
+%}
+end
