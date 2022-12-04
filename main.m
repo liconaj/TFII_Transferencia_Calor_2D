@@ -8,8 +8,8 @@ addpath heattransf2d
 q = 10e3; %(W) debe ser 10, 20 o 30 para el problema
 k = 50; % coeficiente de conduccion pieza
 T_env = 20; %(°C) temperatura ambiente
-L = 0.5; %(m) largo del sistema
-A = (0.12*2+0.14) * L;  % área por la que entra calor
+xt = 0.5; %(m) largo del sistema
+A = (0.12*2+0.14) * xt;  % área por la que entra calor
 
 % Ambiente
 air = struct();
@@ -18,7 +18,7 @@ air.u = 10; %(m/s) velocidad media
 air.p = 1.2041; %(kg/m3) densidad del aire
 air.v = 1.8e-5 / air.p; %(m2/s) viscosidad cinematica
 air.k = 0.02; %(W/m°C) conductividad térmica a 20-25°C
-air.L = L; %(m) longitud pared en la que actúa el aire
+air.L = xt; %(m) longitud pared en la que actúa el aire
 air.T = T_env; % temperatura
 air.cp = 1000; %(J/kg°C) calor específico del aire
 
@@ -100,10 +100,10 @@ heatsystem = heatsystem.setupnh(fin.id,fin.h,air.T); % aleta
 heatsystem = heatsystem.setupnh(rf1.id,rf1.h,rf1.T); % refrigeracion 1
 heatsystem = heatsystem.setupnh(rf2.id,rf2.h,rf2.T); % refrigeracion 2
 heatsystem = heatsystem.solvesystem(); % resolver el sistema
-heatsystem = heatsystem.setTprop(rf1.id, rf1, L);
+heatsystem = heatsystem.setTprop(rf1.id, rf1, xt);
 
 % RESULTADOS
-Z = L; % plano en eje Z a observar
+Z = xt; % plano en eje Z a observar
 Tprop = heatsystem.getTprop; %aumento temperatura promedio en canales
 Tmax_all = heatsystem.getTmax(Z); %temperatura maxima en toda la pieza
 Tmax_rf1 = heatsystem.getTmaxc(rf1.id,Z); % temperatura maxima en borde canal 1
@@ -136,6 +136,20 @@ fprintf("\nTemperaturas máximas\n")
 fprintf("    T_max: %0.3f °C\n",Tmax_all)
 fprintf("T_max_rf1: %0.2f°C\n",Tmax_rf1)
 fprintf("T_max_rf2: %0.2f°C\n",Tmax_rf2)
-%heatsystem.showimtemps(Z) % mostrar temperaturas
 
+% mostrar temperaturas
+%heatsystem.showimtemps(Z) 
 heatsystem.showcttemps(Z,30)
+xlabel("Posición X [m]")
+ylabel("Posición Y [m]")
+title("Distribución de temperaturas, Q=10kW")
+%{
+NumXTicks = 13;
+xt = get(gca,'XLim');
+set(gca,'XTick',linspace(xt(1),xt(2),NumXTicks))
+set(gca,'xticklabel',num2str(get(gca,'xtick')','%.2f'))
+yt = get(gca,'YLim');
+NumYTicks = 1;
+set(gca,'YTick',linspace(yt(1),yt(2),NumXTicks))
+set(gca,'yticklabel',num2str(get(gca,'ytick')','%.2f'))
+%}

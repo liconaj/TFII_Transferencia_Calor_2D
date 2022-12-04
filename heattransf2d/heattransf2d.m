@@ -37,7 +37,13 @@ classdef heattransf2d
             end
             obj = calcmainnodespos(obj);
             tempmesh = obj.TempMesh(obj.yp:obj.yn,obj.xp:obj.xn);
-            imagesc(obj.tprop * Z + tempmesh)
+            [m,n] = size(tempmesh);
+            xt = (1:n)*obj.dx;
+            yt = (1:m)*obj.dx;
+            imagesc(xt,yt,obj.tprop * Z + tempmesh)
+            %xt = arrayfun(@num2str,get(gca,'xtick')*obj.dx,'un',0);
+            %yt = arrayfun(@num2str,get(gca,'ytick')*obj.dx,'un',0);
+            %set(gca,'xticklabel',xt,'yticklabel',yt)
             colorbar
             daspect([1 1 1])
         end
@@ -51,10 +57,13 @@ classdef heattransf2d
             obj = calcmainnodespos(obj);
             tempmesh = obj.TempMesh(obj.yp:obj.yn,obj.xp:obj.xn);
             tempmesh = tempmesh(end:-1:1,:);
+            [m,n] = size(tempmesh);
+            xt = (1:n)*obj.dx;
+            yt = (1:m)*obj.dx;
             if filled
-                contourf(obj.tprop * Z + tempmesh,levels,'LineColor','flat')
+                contourf(xt,yt,obj.tprop * Z + tempmesh,levels,'LineColor','flat')
             else
-                contour(obj.tprop * Z + tempmesh,levels)
+                contour(xt,yt,obj.tprop * Z + tempmesh,levels)
             end
             colorbar
             set(gca,'Color','k')
